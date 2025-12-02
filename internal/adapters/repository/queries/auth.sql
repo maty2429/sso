@@ -1,8 +1,8 @@
 -- name: CreateUser :one
 INSERT INTO users (
-    rut, dv, email, first_name, last_name, password_hash
+    rut, dv, email, first_name, last_name, password_hash, must_change_password
 ) VALUES (
-    $1, $2, $3, $4, $5, $6
+    $1, $2, $3, $4, $5, $6, $7
 ) RETURNING *;
 
 -- name: GetUserByEmail :one
@@ -13,6 +13,12 @@ WHERE email = $1 LIMIT 1;
 SELECT * FROM users
 WHERE rut = $1 LIMIT 1;
 
+-- name: UpdateUserPassword :one
+UPDATE users
+SET password_hash = $2, must_change_password = $3, updated_at = NOW()
+WHERE id = $1
+RETURNING *;
+
 -- name: CreateRefreshToken :one
 INSERT INTO refresh_tokens (
     user_id, token_hash, device_info, ip_address, expires_at
@@ -20,14 +26,41 @@ INSERT INTO refresh_tokens (
     $1, $2, $3, $4, $5
 ) RETURNING *;
 
--- name: GetProjectMember :one
--- Esta es LA clave de tu seguridad (El Portero)
--- Verifica si el usuario pertenece al proyecto y devuelve su rol
-SELECT pm.role_code, rd.name as role_name
+-- name: CreateProjectMember :one
+INSERT INTO project_members (
+    user_id, project_id, is_active
+) VALUES (
+    $1, $2, $3
+) RETURNING *;
+
+-- name: AssignRoleToMember :exec
+INSERT INTO project_member_roles (
+    member_id, role_code
+) VALUES (
+    $1, $2
+);
+
+-- name: GetMemberRoles :many
+SELECT pmr.role_code, rd.name as role_name, rd.description
+FROM project_member_roles pmr
+JOIN role_definitions rd ON rd.code = pmr.role_code
+WHERE pmr.member_id = $1;
+
+SELECT pm.*
 FROM project_members pm
 JOIN projects p ON p.id = pm.project_id
-JOIN role_definitions rd ON rd.code = pm.role_code
 WHERE pm.user_id = $1 
   AND p.project_code = $2 
   AND pm.is_active = TRUE
 LIMIT 1;
+
+-- name: CreateProject :one
+INSERT INTO projects (
+    name, project_code, description, frontend_url, is_active
+) VALUES (
+    $1, $2, $3, $4, $5
+) RETURNING *;
+
+-- name: GetProjectByCode :one
+SELECT * FROM projects
+WHERE project_code = $1 LIMIT 1;

@@ -1,5 +1,7 @@
+GOCACHE ?= $(CURDIR)/.gocache
+
 run:
-	go run cmd/api/main.go
+	GOCACHE=$(GOCACHE) go run cmd/api/main.go
 
 sqlc:
 	sqlc generate
@@ -10,3 +12,11 @@ sqlc:
 
 test:
 	go test ./...
+
+docker-run:
+	# Levanta API y Postgres con docker-compose
+	docker compose --env-file .env.docker up -d --build api
+
+docker-down:
+	# Detiene y borra contenedores/volúmenes named
+	docker compose down

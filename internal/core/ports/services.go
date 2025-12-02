@@ -7,7 +7,9 @@ import (
 )
 
 type AuthService interface {
-	Login(ctx context.Context, email, password, projectCode string) (string, string, error) // Returns access_token, refresh_token, error
-	Register(ctx context.Context, user *domain.User, password string) (*domain.User, error)
-	ValidateToken(tokenString string) (*domain.User, error)
+	Login(ctx context.Context, rut, password, projectCode string) (string, string, *domain.User, []int, error)
+	Register(ctx context.Context, user *domain.User) (*domain.User, error)
+	ChangePassword(ctx context.Context, rut int, oldPassword, newPassword string) error
+	ValidateToken(tokenString string) (*domain.User, []int, error)
+	GetUserWithProjects(ctx context.Context, rut int) (*domain.UserWithProjects, error)
 }

@@ -4,12 +4,15 @@ import (
 	"context"
 
 	"sso/internal/core/domain"
+
+	"github.com/google/uuid"
 )
 
 type UserRepository interface {
 	Save(ctx context.Context, user *domain.User) (*domain.User, error)
 	FindByEmail(ctx context.Context, email string) (*domain.User, error)
 	FindByRut(ctx context.Context, rut int) (*domain.User, error)
+	UpdatePassword(ctx context.Context, userID uuid.UUID, passwordHash string, mustChange bool) error
 }
 
 type TokenRepository interface {
@@ -17,5 +20,11 @@ type TokenRepository interface {
 }
 
 type ProjectRepository interface {
-	GetMemberRole(ctx context.Context, userID string, projectCode string) (int, string, error)
+	GetMemberRoles(ctx context.Context, userID string, projectCode string) ([]int, error)
+	CreateProject(ctx context.Context, project *domain.Project) (*domain.Project, error)
+	GetProjectByCode(ctx context.Context, projectCode string) (*domain.Project, error)
+	AddMember(ctx context.Context, userID uuid.UUID, projectID int32) error
+	GetMemberID(ctx context.Context, userID uuid.UUID, projectID int32) (uuid.UUID, error)
+	AssignRole(ctx context.Context, memberID uuid.UUID, roleCode int) error
+	GetUserProjectsWithRoles(ctx context.Context, userID uuid.UUID) ([]domain.UserProject, error)
 }

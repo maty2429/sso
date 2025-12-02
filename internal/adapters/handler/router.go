@@ -6,7 +6,7 @@ import (
 )
 
 // NewRouter define todas las rutas y retorna el motor de Gin listo para usar
-func NewRouter(authHandler *AuthHandler) *gin.Engine {
+func NewRouter(authHandler *AuthHandler, projectHandler *ProjectHandler) *gin.Engine {
 	r := gin.Default()
 
 	// Configuración CORS (Vital para que el Frontend no falle)
@@ -19,12 +19,16 @@ func NewRouter(authHandler *AuthHandler) *gin.Engine {
 		{
 			auth.POST("/login", authHandler.Login)
 			auth.POST("/register", authHandler.Register)
+			auth.POST("/change-password", authHandler.ChangePassword)
+			auth.GET("/users/:rut", authHandler.GetUser)
 			// Aquí añadirías el refresh: auth.POST("/refresh", authHandler.RefreshToken)
 		}
 
-		// Futuras rutas protegidas (ejemplo)
-		// projects := v1.Group("/projects")
-		// projects.Use(MiddlewareDeAutenticacion)
+		projects := v1.Group("/projects")
+		{
+			projects.POST("", projectHandler.CreateProject)
+			projects.POST("/:projectCode/members", projectHandler.AddMember)
+		}
 	}
 
 	return r

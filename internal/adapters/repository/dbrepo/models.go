@@ -17,7 +17,6 @@ type AuditLog struct {
 	Action      string           `json:"action"`
 	Description pgtype.Text      `json:"description"`
 	IpAddress   *netip.Addr      `json:"ip_address"`
-	UserAgent   pgtype.Text      `json:"user_agent"`
 	MetaData    []byte           `json:"meta_data"`
 	CreatedAt   pgtype.Timestamp `json:"created_at"`
 }
@@ -26,6 +25,7 @@ type Project struct {
 	ID          int32            `json:"id"`
 	ProjectCode string           `json:"project_code"`
 	Name        string           `json:"name"`
+	FrontendUrl pgtype.Text      `json:"frontend_url"`
 	Description pgtype.Text      `json:"description"`
 	IsActive    pgtype.Bool      `json:"is_active"`
 	CreatedAt   pgtype.Timestamp `json:"created_at"`
@@ -36,16 +36,20 @@ type ProjectMember struct {
 	ID        pgtype.UUID      `json:"id"`
 	UserID    pgtype.UUID      `json:"user_id"`
 	ProjectID int32            `json:"project_id"`
-	RoleCode  int16            `json:"role_code"`
 	IsActive  pgtype.Bool      `json:"is_active"`
 	JoinedAt  pgtype.Timestamp `json:"joined_at"`
+}
+
+type ProjectMemberRole struct {
+	MemberID   pgtype.UUID      `json:"member_id"`
+	RoleCode   int16            `json:"role_code"`
+	AssignedAt pgtype.Timestamp `json:"assigned_at"`
 }
 
 type RefreshToken struct {
 	ID         pgtype.UUID      `json:"id"`
 	UserID     pgtype.UUID      `json:"user_id"`
 	TokenHash  string           `json:"token_hash"`
-	FamilyID   pgtype.UUID      `json:"family_id"`
 	DeviceInfo pgtype.Text      `json:"device_info"`
 	IpAddress  *netip.Addr      `json:"ip_address"`
 	IsRevoked  pgtype.Bool      `json:"is_revoked"`
@@ -64,15 +68,17 @@ type User struct {
 	Rut                    int32            `json:"rut"`
 	Dv                     string           `json:"dv"`
 	FullRut                pgtype.Text      `json:"full_rut"`
-	Email                  string           `json:"email"`
 	FirstName              string           `json:"first_name"`
 	LastName               string           `json:"last_name"`
-	PasswordHash           string           `json:"password_hash"`
-	FailedAttempts         pgtype.Int2      `json:"failed_attempts"`
-	LockedUntil            pgtype.Timestamp `json:"locked_until"`
+	Email                  string           `json:"email"`
+	PasswordHash           pgtype.Text      `json:"password_hash"`
+	MustChangePassword     pgtype.Bool      `json:"must_change_password"`
+	IsActive               pgtype.Bool      `json:"is_active"`
+	PasswordChangedAt      pgtype.Timestamp `json:"password_changed_at"`
 	RecoveryToken          pgtype.Text      `json:"recovery_token"`
 	RecoveryTokenExpiresAt pgtype.Timestamp `json:"recovery_token_expires_at"`
-	IsActive               pgtype.Bool      `json:"is_active"`
+	FailedAttempts         pgtype.Int2      `json:"failed_attempts"`
+	LockedUntil            pgtype.Timestamp `json:"locked_until"`
 	LastLoginAt            pgtype.Timestamp `json:"last_login_at"`
 	CreatedAt              pgtype.Timestamp `json:"created_at"`
 	UpdatedAt              pgtype.Timestamp `json:"updated_at"`

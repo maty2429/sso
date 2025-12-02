@@ -6,16 +6,20 @@ package dbrepo
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
+	AssignRoleToMember(ctx context.Context, arg AssignRoleToMemberParams) error
+	CreateProjectMember(ctx context.Context, arg CreateProjectMemberParams) (ProjectMember, error)
 	CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) (RefreshToken, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
-	// Esta es LA clave de tu seguridad (El Portero)
-	// Verifica si el usuario pertenece al proyecto y devuelve su rol
-	GetProjectMember(ctx context.Context, arg GetProjectMemberParams) (GetProjectMemberRow, error)
+	GetMemberRoles(ctx context.Context, memberID pgtype.UUID) ([]GetMemberRolesRow, error)
+	GetProjectMemberByUserAndProject(ctx context.Context, arg GetProjectMemberByUserAndProjectParams) (ProjectMember, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByRut(ctx context.Context, rut int32) (User, error)
+	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) (User, error)
 }
 
 var _ Querier = (*Queries)(nil)

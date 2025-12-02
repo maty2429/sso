@@ -33,12 +33,14 @@ func main() {
 	// Inyectamos el repo tres veces porque cumple las tres interfaces (User, Token, Project)
 	// Nota: Necesitamos actualizar NewAuthService para aceptar ProjectRepository
 	authService := service.NewAuthService(repo, repo, repo, cfg.JWTSecret)
+	projectService := service.NewProjectService(repo, repo)
 
 	// CAPA DE TRANSPORTE: Handler
 	authHandler := handler.NewAuthHandler(authService)
+	projectHandler := handler.NewProjectHandler(projectService)
 
 	// 4. Inicializar Router (Aquí es donde limpiamos el main)
-	r := handler.NewRouter(authHandler)
+	r := handler.NewRouter(authHandler, projectHandler)
 
 	// 5. Correr Servidor
 	log.Printf("🚀 Server starting on port %s", cfg.Port)

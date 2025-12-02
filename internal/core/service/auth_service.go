@@ -7,6 +7,9 @@ import (
 
 	"sso/internal/core/domain"
 	"sso/internal/core/ports"
+	"sso/internal/utils"
+
+	"strconv"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -29,34 +32,48 @@ func NewAuthService(userRepo ports.UserRepository, tokenRepo ports.TokenReposito
 	}
 }
 
-func (s *AuthService) Login(ctx context.Context, email, password, projectCode string) (string, string, error) {
-	// 1. Buscar usuario
-	user, err := s.userRepo.FindByEmail(ctx, email)
+func (s *AuthService) Login(ctx context.Context, rut, password, projectCode string) (string, string, *domain.User, []int, error) {
+	// 1. Parsear RUT
+	rutInt, _, err := utils.ParseRut(rut)
 	if err != nil {
-		return "", "", err
+		return "", "", nil, nil, errors.New("invalid rut format")
+	}
+
+	// 2. Buscar usuario
+	user, err := s.userRepo.FindByRut(ctx, rutInt)
+	if err != nil {
+		return "", "", nil, nil, err
 	}
 	if user == nil {
-		return "", "", errors.New("invalid credentials")
+		return "", "", nil, nil, errors.New("invalid credentials")
 	}
 
 	// 2. Verificar contraseña
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
-		return "", "", errors.New("invalid credentials")
+	if user.PasswordHash == nil {
+		return "", "", nil, nil, errors.New("invalid credentials")
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(*user.PasswordHash), []byte(password)); err != nil {
+		return "", "", nil, nil, errors.New("invalid credentials")
 	}
 
-	// 3. Verificar membresía en el proyecto
-	roleCode, _, err := s.projectRepo.GetMemberRole(ctx, user.ID.String(), projectCode)
+	// 3. Verificar si debe cambiar contraseña
+	if user.MustChangePassword {
+		return "", "", nil, nil, errors.New("PASSWORD_CHANGE_REQUIRED")
+	}
+
+	// 4. Verificar membresía en el proyecto y obtener roles
+	roles, err := s.projectRepo.GetMemberRoles(ctx, user.ID.String(), projectCode)
 	if err != nil {
-		return "", "", errors.New("no access to this project")
+		return "", "", nil, nil, errors.New("no access to this project")
 	}
 
-	// 4. Generar Access Token (JWT) con Rol
-	accessToken, err := s.generateAccessToken(user, roleCode)
+	// 5. Generar Access Token (JWT) con Roles
+	accessToken, err := s.generateAccessToken(user, roles)
 	if err != nil {
-		return "", "", err
+		return "", "", nil, nil, err
 	}
 
-	// 5. Generar Refresh Token (Opaco)
+	// 6. Generar Refresh Token (Opaco)
 	refreshTokenStr := uuid.New().String()
 	refreshTokenHash, _ := bcrypt.GenerateFromPassword([]byte(refreshTokenStr), bcrypt.DefaultCost)
 
@@ -66,27 +83,65 @@ func (s *AuthService) Login(ctx context.Context, email, password, projectCode st
 		ExpiresAt: time.Now().Add(24 * 7 * time.Hour), // 7 días
 	}
 
-	// 6. Guardar Refresh Token
+	// 7. Guardar Refresh Token
 	if err := s.tokenRepo.SaveRefreshToken(ctx, refreshToken); err != nil {
-		return "", "", err
+		return "", "", nil, nil, err
 	}
 
-	return accessToken, refreshTokenStr, nil
+	return accessToken, refreshTokenStr, user, roles, nil
 }
 
-func (s *AuthService) Register(ctx context.Context, user *domain.User, password string) (*domain.User, error) {
-	// 1. Hash password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+func (s *AuthService) Register(ctx context.Context, user *domain.User) (*domain.User, error) {
+	// 1. Generar password inicial (primeros 4 dígitos del RUT)
+	// Asumimos que user.Rut tiene el RUT numérico (ej: 12345678)
+	rutStr := strconv.Itoa(user.Rut)
+	if len(rutStr) < 4 {
+		return nil, errors.New("invalid rut length")
+	}
+	initialPassword := rutStr[:4]
+
+	// 2. Hash password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(initialPassword), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
 	}
-	user.PasswordHash = string(hashedPassword)
+	hashedPwdStr := string(hashedPassword)
+	user.PasswordHash = &hashedPwdStr
+	user.MustChangePassword = true
 
-	// 2. Guardar usuario
+	// 3. Guardar usuario
 	return s.userRepo.Save(ctx, user)
 }
 
-func (s *AuthService) ValidateToken(tokenString string) (*domain.User, error) {
+func (s *AuthService) ChangePassword(ctx context.Context, rut int, oldPassword, newPassword string) error {
+	// 1. Buscar usuario
+	user, err := s.userRepo.FindByRut(ctx, rut)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return errors.New("user not found")
+	}
+
+	// 2. Verificar contraseña actual
+	if user.PasswordHash == nil {
+		return errors.New("invalid credentials")
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(*user.PasswordHash), []byte(oldPassword)); err != nil {
+		return errors.New("invalid credentials")
+	}
+
+	// 3. Hash nueva contraseña
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	// 4. Actualizar usuario
+	return s.userRepo.UpdatePassword(ctx, user.ID, string(hashedPassword), false)
+}
+
+func (s *AuthService) ValidateToken(tokenString string) (*domain.User, []int, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.New("unexpected signing method")
@@ -95,34 +150,66 @@ func (s *AuthService) ValidateToken(tokenString string) (*domain.User, error) {
 	})
 
 	if err != nil || !token.Valid {
-		return nil, errors.New("invalid token")
+		return nil, nil, errors.New("invalid token")
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return nil, errors.New("invalid token claims")
+		return nil, nil, errors.New("invalid token claims")
 	}
 
 	userIDStr, ok := claims["sub"].(string)
 	if !ok {
-		return nil, errors.New("invalid subject")
+		return nil, nil, errors.New("invalid subject")
+	}
+
+	var roles []int
+	if rolesClaim, ok := claims["roles"].([]interface{}); ok {
+		for _, r := range rolesClaim {
+			if rFloat, ok := r.(float64); ok {
+				roles = append(roles, int(rFloat))
+			}
+		}
 	}
 
 	// Aquí podrías buscar el usuario en la BD si necesitas más datos o verificar si sigue activo
 	// Por ahora devolvemos un usuario parcial con el ID
 	uid, _ := uuid.Parse(userIDStr)
-	return &domain.User{ID: uid}, nil
+	return &domain.User{ID: uid}, roles, nil
 }
 
-func (s *AuthService) generateAccessToken(user *domain.User, roleCode int) (string, error) {
+func (s *AuthService) generateAccessToken(user *domain.User, roles []int) (string, error) {
 	claims := jwt.MapClaims{
-		"sub":       user.ID.String(),
-		"email":     user.Email,
-		"role_code": roleCode,
-		"exp":       time.Now().Add(15 * time.Minute).Unix(),
-		"iat":       time.Now().Unix(),
+		"sub":   user.ID.String(),
+		"email": user.Email,
+		"roles": roles,
+		"exp":   time.Now().Add(15 * time.Minute).Unix(),
+		"iat":   time.Now().Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(s.jwtSecret)
+}
+
+func (s *AuthService) GetUserWithProjects(ctx context.Context, rut int) (*domain.UserWithProjects, error) {
+	// 1. Get User
+	user, err := s.userRepo.FindByRut(ctx, rut)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, errors.New("user not found")
+	}
+
+	// 2. Get Projects and Roles
+	projects, err := s.projectRepo.GetUserProjectsWithRoles(ctx, user.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. Construct response
+	return &domain.UserWithProjects{
+		User:     user,
+		Projects: projects,
+	}, nil
 }

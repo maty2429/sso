@@ -7,16 +7,23 @@ import (
 )
 
 type User struct {
-	ID             uuid.UUID
-	Rut            int
-	Dv             string
-	Email          string
-	FirstName      string
-	LastName       string
-	PasswordHash   string
-	IsActive       bool
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID                  uuid.UUID  `json:"id"`
+	Rut                 int        `json:"rut"`
+	Dv                  string     `json:"dv"`
+	Email               string     `json:"email"`
+	FirstName           string     `json:"first_name"`
+	LastName            string     `json:"last_name"`
+	PasswordHash        *string    `json:"-"` // Hidden
+	MustChangePassword  bool       `json:"must_change_password"`
+	PasswordChangedAt   *time.Time `json:"password_changed_at"`
+	RecoveryToken       *string    `json:"-"` // Hidden
+	RecoveryTokenExpiry *time.Time `json:"-"` // Hidden
+	FailedAttempts      int        `json:"failed_attempts"`
+	LockedUntil         *time.Time `json:"locked_until"`
+	IsActive            bool       `json:"is_active"`
+	LastLoginAt         *time.Time `json:"last_login_at"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
 }
 
 type RefreshToken struct {

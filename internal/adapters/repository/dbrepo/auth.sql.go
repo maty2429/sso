@@ -12,12 +12,57 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const assignRoleToMember = `-- name: AssignRoleToMember :exec
+INSERT INTO project_member_roles (
+    member_id, role_code
+) VALUES (
+    $1, $2
+)
+`
+
+type AssignRoleToMemberParams struct {
+	MemberID pgtype.UUID `json:"member_id"`
+	RoleCode int16       `json:"role_code"`
+}
+
+func (q *Queries) AssignRoleToMember(ctx context.Context, arg AssignRoleToMemberParams) error {
+	_, err := q.db.Exec(ctx, assignRoleToMember, arg.MemberID, arg.RoleCode)
+	return err
+}
+
+const createProjectMember = `-- name: CreateProjectMember :one
+INSERT INTO project_members (
+    user_id, project_id, is_active
+) VALUES (
+    $1, $2, $3
+) RETURNING id, user_id, project_id, is_active, joined_at
+`
+
+type CreateProjectMemberParams struct {
+	UserID    pgtype.UUID `json:"user_id"`
+	ProjectID int32       `json:"project_id"`
+	IsActive  pgtype.Bool `json:"is_active"`
+}
+
+func (q *Queries) CreateProjectMember(ctx context.Context, arg CreateProjectMemberParams) (ProjectMember, error) {
+	row := q.db.QueryRow(ctx, createProjectMember, arg.UserID, arg.ProjectID, arg.IsActive)
+	var i ProjectMember
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ProjectID,
+		&i.IsActive,
+		&i.JoinedAt,
+	)
+	return i, err
+}
+
 const createRefreshToken = `-- name: CreateRefreshToken :one
 INSERT INTO refresh_tokens (
     user_id, token_hash, device_info, ip_address, expires_at
 ) VALUES (
     $1, $2, $3, $4, $5
-) RETURNING id, user_id, token_hash, family_id, device_info, ip_address, is_revoked, expires_at, created_at
+) RETURNING id, user_id, token_hash, device_info, ip_address, is_revoked, expires_at, created_at
 `
 
 type CreateRefreshTokenParams struct {
@@ -41,7 +86,6 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 		&i.ID,
 		&i.UserID,
 		&i.TokenHash,
-		&i.FamilyID,
 		&i.DeviceInfo,
 		&i.IpAddress,
 		&i.IsRevoked,
@@ -53,19 +97,20 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (
-    rut, dv, email, first_name, last_name, password_hash
+    rut, dv, email, first_name, last_name, password_hash, must_change_password
 ) VALUES (
-    $1, $2, $3, $4, $5, $6
-) RETURNING id, rut, dv, full_rut, email, first_name, last_name, password_hash, failed_attempts, locked_until, recovery_token, recovery_token_expires_at, is_active, last_login_at, created_at, updated_at
+    $1, $2, $3, $4, $5, $6, $7
+) RETURNING id, rut, dv, full_rut, first_name, last_name, email, password_hash, must_change_password, is_active, password_changed_at, recovery_token, recovery_token_expires_at, failed_attempts, locked_until, last_login_at, created_at, updated_at
 `
 
 type CreateUserParams struct {
-	Rut          int32  `json:"rut"`
-	Dv           string `json:"dv"`
-	Email        string `json:"email"`
-	FirstName    string `json:"first_name"`
-	LastName     string `json:"last_name"`
-	PasswordHash string `json:"password_hash"`
+	Rut                int32       `json:"rut"`
+	Dv                 string      `json:"dv"`
+	Email              string      `json:"email"`
+	FirstName          string      `json:"first_name"`
+	LastName           string      `json:"last_name"`
+	PasswordHash       pgtype.Text `json:"password_hash"`
+	MustChangePassword pgtype.Bool `json:"must_change_password"`
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
@@ -76,6 +121,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		arg.FirstName,
 		arg.LastName,
 		arg.PasswordHash,
+		arg.MustChangePassword,
 	)
 	var i User
 	err := row.Scan(
@@ -83,15 +129,17 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Rut,
 		&i.Dv,
 		&i.FullRut,
-		&i.Email,
 		&i.FirstName,
 		&i.LastName,
+		&i.Email,
 		&i.PasswordHash,
-		&i.FailedAttempts,
-		&i.LockedUntil,
+		&i.MustChangePassword,
+		&i.IsActive,
+		&i.PasswordChangedAt,
 		&i.RecoveryToken,
 		&i.RecoveryTokenExpiresAt,
-		&i.IsActive,
+		&i.FailedAttempts,
+		&i.LockedUntil,
 		&i.LastLoginAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -99,38 +147,69 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 	return i, err
 }
 
-const getProjectMember = `-- name: GetProjectMember :one
-SELECT pm.role_code, rd.name as role_name
+const getMemberRoles = `-- name: GetMemberRoles :many
+SELECT pmr.role_code, rd.name as role_name, rd.description
+FROM project_member_roles pmr
+JOIN role_definitions rd ON rd.code = pmr.role_code
+WHERE pmr.member_id = $1
+`
+
+type GetMemberRolesRow struct {
+	RoleCode    int16       `json:"role_code"`
+	RoleName    string      `json:"role_name"`
+	Description pgtype.Text `json:"description"`
+}
+
+func (q *Queries) GetMemberRoles(ctx context.Context, memberID pgtype.UUID) ([]GetMemberRolesRow, error) {
+	rows, err := q.db.Query(ctx, getMemberRoles, memberID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetMemberRolesRow
+	for rows.Next() {
+		var i GetMemberRolesRow
+		if err := rows.Scan(&i.RoleCode, &i.RoleName, &i.Description); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getProjectMemberByUserAndProject = `-- name: GetProjectMemberByUserAndProject :one
+SELECT pm.id, pm.user_id, pm.project_id, pm.is_active, pm.joined_at
 FROM project_members pm
 JOIN projects p ON p.id = pm.project_id
-JOIN role_definitions rd ON rd.code = pm.role_code
 WHERE pm.user_id = $1 
   AND p.project_code = $2 
   AND pm.is_active = TRUE
 LIMIT 1
 `
 
-type GetProjectMemberParams struct {
+type GetProjectMemberByUserAndProjectParams struct {
 	UserID      pgtype.UUID `json:"user_id"`
 	ProjectCode string      `json:"project_code"`
 }
 
-type GetProjectMemberRow struct {
-	RoleCode int16  `json:"role_code"`
-	RoleName string `json:"role_name"`
-}
-
-// Esta es LA clave de tu seguridad (El Portero)
-// Verifica si el usuario pertenece al proyecto y devuelve su rol
-func (q *Queries) GetProjectMember(ctx context.Context, arg GetProjectMemberParams) (GetProjectMemberRow, error) {
-	row := q.db.QueryRow(ctx, getProjectMember, arg.UserID, arg.ProjectCode)
-	var i GetProjectMemberRow
-	err := row.Scan(&i.RoleCode, &i.RoleName)
+func (q *Queries) GetProjectMemberByUserAndProject(ctx context.Context, arg GetProjectMemberByUserAndProjectParams) (ProjectMember, error) {
+	row := q.db.QueryRow(ctx, getProjectMemberByUserAndProject, arg.UserID, arg.ProjectCode)
+	var i ProjectMember
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ProjectID,
+		&i.IsActive,
+		&i.JoinedAt,
+	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, rut, dv, full_rut, email, first_name, last_name, password_hash, failed_attempts, locked_until, recovery_token, recovery_token_expires_at, is_active, last_login_at, created_at, updated_at FROM users
+SELECT id, rut, dv, full_rut, first_name, last_name, email, password_hash, must_change_password, is_active, password_changed_at, recovery_token, recovery_token_expires_at, failed_attempts, locked_until, last_login_at, created_at, updated_at FROM users
 WHERE email = $1 LIMIT 1
 `
 
@@ -142,15 +221,17 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.Rut,
 		&i.Dv,
 		&i.FullRut,
-		&i.Email,
 		&i.FirstName,
 		&i.LastName,
+		&i.Email,
 		&i.PasswordHash,
-		&i.FailedAttempts,
-		&i.LockedUntil,
+		&i.MustChangePassword,
+		&i.IsActive,
+		&i.PasswordChangedAt,
 		&i.RecoveryToken,
 		&i.RecoveryTokenExpiresAt,
-		&i.IsActive,
+		&i.FailedAttempts,
+		&i.LockedUntil,
 		&i.LastLoginAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -159,7 +240,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 }
 
 const getUserByRut = `-- name: GetUserByRut :one
-SELECT id, rut, dv, full_rut, email, first_name, last_name, password_hash, failed_attempts, locked_until, recovery_token, recovery_token_expires_at, is_active, last_login_at, created_at, updated_at FROM users
+SELECT id, rut, dv, full_rut, first_name, last_name, email, password_hash, must_change_password, is_active, password_changed_at, recovery_token, recovery_token_expires_at, failed_attempts, locked_until, last_login_at, created_at, updated_at FROM users
 WHERE rut = $1 LIMIT 1
 `
 
@@ -171,15 +252,56 @@ func (q *Queries) GetUserByRut(ctx context.Context, rut int32) (User, error) {
 		&i.Rut,
 		&i.Dv,
 		&i.FullRut,
-		&i.Email,
 		&i.FirstName,
 		&i.LastName,
+		&i.Email,
 		&i.PasswordHash,
-		&i.FailedAttempts,
-		&i.LockedUntil,
+		&i.MustChangePassword,
+		&i.IsActive,
+		&i.PasswordChangedAt,
 		&i.RecoveryToken,
 		&i.RecoveryTokenExpiresAt,
+		&i.FailedAttempts,
+		&i.LockedUntil,
+		&i.LastLoginAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateUserPassword = `-- name: UpdateUserPassword :one
+UPDATE users
+SET password_hash = $2, must_change_password = $3, updated_at = NOW()
+WHERE id = $1
+RETURNING id, rut, dv, full_rut, first_name, last_name, email, password_hash, must_change_password, is_active, password_changed_at, recovery_token, recovery_token_expires_at, failed_attempts, locked_until, last_login_at, created_at, updated_at
+`
+
+type UpdateUserPasswordParams struct {
+	ID                 pgtype.UUID `json:"id"`
+	PasswordHash       pgtype.Text `json:"password_hash"`
+	MustChangePassword pgtype.Bool `json:"must_change_password"`
+}
+
+func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserPassword, arg.ID, arg.PasswordHash, arg.MustChangePassword)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Rut,
+		&i.Dv,
+		&i.FullRut,
+		&i.FirstName,
+		&i.LastName,
+		&i.Email,
+		&i.PasswordHash,
+		&i.MustChangePassword,
 		&i.IsActive,
+		&i.PasswordChangedAt,
+		&i.RecoveryToken,
+		&i.RecoveryTokenExpiresAt,
+		&i.FailedAttempts,
+		&i.LockedUntil,
 		&i.LastLoginAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
