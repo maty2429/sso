@@ -21,7 +21,8 @@ func NewRouter(authHandler *AuthHandler, projectHandler *ProjectHandler) *gin.En
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/change-password", authHandler.ChangePassword)
 			auth.GET("/users/:rut", authHandler.GetUser)
-			// Aquí añadirías el refresh: auth.POST("/refresh", authHandler.RefreshToken)
+			auth.POST("/refresh", authHandler.Refresh)
+			auth.POST("/logout", authHandler.Logout)
 		}
 
 		projects := v1.Group("/projects")

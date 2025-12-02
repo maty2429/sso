@@ -12,4 +12,6 @@ type AuthService interface {
 	ChangePassword(ctx context.Context, rut int, oldPassword, newPassword string) error
 	ValidateToken(tokenString string) (*domain.User, []int, error)
 	GetUserWithProjects(ctx context.Context, rut int) (*domain.UserWithProjects, error)
+	Refresh(ctx context.Context, refreshToken string, projectCode string) (string, string, error)
+	Logout(ctx context.Context, refreshToken string) error
 }

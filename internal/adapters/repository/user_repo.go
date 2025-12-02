@@ -60,6 +60,36 @@ func (r *PostgresRepo) FindByRut(ctx context.Context, rut int) (*domain.User, er
 	return mapUser(row), nil
 }
 
+func (r *PostgresRepo) FindByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
+	query := `
+		SELECT id, rut, dv, email, first_name, last_name, password_hash, must_change_password, is_active, created_at, updated_at
+		FROM users
+		WHERE id = $1
+		LIMIT 1
+	`
+	var row dbrepo.User
+	err := r.DB.QueryRow(ctx, query, id).Scan(
+		&row.ID,
+		&row.Rut,
+		&row.Dv,
+		&row.Email,
+		&row.FirstName,
+		&row.LastName,
+		&row.PasswordHash,
+		&row.MustChangePassword,
+		&row.IsActive,
+		&row.CreatedAt,
+		&row.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return mapUser(row), nil
+}
+
 func (r *PostgresRepo) UpdatePassword(ctx context.Context, userID uuid.UUID, passwordHash string, mustChange bool) error {
 	params := dbrepo.UpdateUserPasswordParams{
 		ID:                 pgtype.UUID{Bytes: userID, Valid: true},

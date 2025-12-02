@@ -11,12 +11,14 @@ import (
 type ProjectService struct {
 	projectRepo ports.ProjectRepository
 	userRepo    ports.UserRepository
+	auditRepo   ports.AuditRepository
 }
 
-func NewProjectService(projectRepo ports.ProjectRepository, userRepo ports.UserRepository) *ProjectService {
+func NewProjectService(projectRepo ports.ProjectRepository, userRepo ports.UserRepository, auditRepo ports.AuditRepository) *ProjectService {
 	return &ProjectService{
 		projectRepo: projectRepo,
 		userRepo:    userRepo,
+		auditRepo:   auditRepo,
 	}
 }
 
@@ -61,26 +63,19 @@ func (s *ProjectService) AddMember(ctx context.Context, projectCode string, rut 
 		return errors.New("user not found")
 	}
 
-	// 3. Add Member
-	err = s.projectRepo.AddMember(ctx, user.ID, project.ID)
-	if err != nil {
+	// 3. Add Member + Roles atomically
+	if err := s.projectRepo.AddMemberWithRoles(ctx, user.ID, project.ID, roles); err != nil {
 		return err
 	}
 
-	// 4. Get Member ID
-	// We need to fetch the member ID to assign roles.
-	// Since we just added it, we can try to fetch it.
-	// We need to update the repo to support this.
-	memberID, err := s.projectRepo.GetMemberID(ctx, user.ID, project.ID)
-	if err != nil {
-		return err
-	}
-
-	// 5. Assign Roles
-	for _, role := range roles {
-		if err := s.projectRepo.AssignRole(ctx, memberID, role); err != nil {
-			return err
-		}
+	// 4. Audit (async)
+	if s.auditRepo != nil {
+		go s.auditRepo.InsertAuditLog(context.Background(), &domain.AuditLog{
+			UserID:      &user.ID,
+			ProjectID:   &project.ID,
+			Action:      "MEMBER_ADDED",
+			Description: "Miembro agregado al proyecto " + project.ProjectCode,
+		})
 	}
 
 	return nil

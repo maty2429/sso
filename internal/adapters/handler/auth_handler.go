@@ -50,6 +50,30 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	})
 }
 
+type refreshRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+	ProjectCode  string `json:"project_code" binding:"required"`
+}
+
+func (h *AuthHandler) Refresh(c *gin.Context) {
+	var req refreshRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	accessToken, refreshToken, err := h.authService.Refresh(c.Request.Context(), req.RefreshToken, req.ProjectCode)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"access_token":  accessToken,
+		"refresh_token": refreshToken,
+	})
+}
+
 type registerRequest struct {
 	Rut       int    `json:"rut" binding:"required"`
 	Dv        string `json:"dv" binding:"required,len=1"`
@@ -139,4 +163,21 @@ func (h *AuthHandler) GetUser(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, userWithProjects)
+}
+
+type logoutRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}
+
+func (h *AuthHandler) Logout(c *gin.Context) {
+	var req logoutRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.authService.Logout(c.Request.Context(), req.RefreshToken); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "logged out"})
 }

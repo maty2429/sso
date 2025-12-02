@@ -39,6 +39,13 @@ make docker-down
 - `make docker-run` — build + levanta la API en Docker (requiere Postgres externo).
 - `make docker-down` — detiene contenedores.
 
+## Endpoints clave (API v1)
+- `POST /api/v1/auth/login` — retorna `access_token` + `refresh_token`.
+- `POST /api/v1/auth/refresh` — recibe `refresh_token` y `project_code`, devuelve nuevo `access_token` y refresh rotado.
+- `POST /api/v1/auth/logout` — revoca el `refresh_token`.
+- `POST /api/v1/auth/change-password` — cambia clave y registra auditoría.
+- `POST /api/v1/projects/:projectCode/members` — alta de miembro + roles (transaccional).
+
 ## Recordatorio rápido (Docker)
 - Configura `.env.docker` con tus credenciales/host de Postgres.
 - Ejecuta `make docker-run` (incluye `--env-file .env.docker`).

@@ -59,13 +59,14 @@ func (q *Queries) CreateProjectMember(ctx context.Context, arg CreateProjectMemb
 
 const createRefreshToken = `-- name: CreateRefreshToken :one
 INSERT INTO refresh_tokens (
-    user_id, token_hash, device_info, ip_address, expires_at
+    id, user_id, token_hash, device_info, ip_address, expires_at
 ) VALUES (
-    $1, $2, $3, $4, $5
+    $1, $2, $3, $4, $5, $6
 ) RETURNING id, user_id, token_hash, device_info, ip_address, is_revoked, expires_at, created_at
 `
 
 type CreateRefreshTokenParams struct {
+	ID         pgtype.UUID      `json:"id"`
 	UserID     pgtype.UUID      `json:"user_id"`
 	TokenHash  string           `json:"token_hash"`
 	DeviceInfo pgtype.Text      `json:"device_info"`
@@ -75,6 +76,7 @@ type CreateRefreshTokenParams struct {
 
 func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) (RefreshToken, error) {
 	row := q.db.QueryRow(ctx, createRefreshToken,
+		arg.ID,
 		arg.UserID,
 		arg.TokenHash,
 		arg.DeviceInfo,
@@ -93,6 +95,38 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const getRefreshTokenByID = `-- name: GetRefreshTokenByID :one
+SELECT id, user_id, token_hash, device_info, ip_address, is_revoked, expires_at, created_at FROM refresh_tokens
+WHERE id = $1 LIMIT 1
+`
+
+func (q *Queries) GetRefreshTokenByID(ctx context.Context, id pgtype.UUID) (RefreshToken, error) {
+	row := q.db.QueryRow(ctx, getRefreshTokenByID, id)
+	var i RefreshToken
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.TokenHash,
+		&i.DeviceInfo,
+		&i.IpAddress,
+		&i.IsRevoked,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const revokeRefreshToken = `-- name: RevokeRefreshToken :exec
+UPDATE refresh_tokens
+SET is_revoked = TRUE
+WHERE id = $1
+`
+
+func (q *Queries) RevokeRefreshToken(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, revokeRefreshToken, id)
+	return err
 }
 
 const createUser = `-- name: CreateUser :one
@@ -307,4 +341,30 @@ func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPassword
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const insertAuditLog = `-- name: InsertAuditLog :exec
+INSERT INTO audit_logs (user_id, project_id, action, description, ip_address, meta_data)
+VALUES ($1, $2, $3, $4, $5, $6)
+`
+
+type InsertAuditLogParams struct {
+	UserID      pgtype.UUID      `json:"user_id"`
+	ProjectID   pgtype.Int4      `json:"project_id"`
+	Action      string           `json:"action"`
+	Description pgtype.Text      `json:"description"`
+	IpAddress   *netip.Addr      `json:"ip_address"`
+	MetaData    []byte           `json:"meta_data"`
+}
+
+func (q *Queries) InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) error {
+	_, err := q.db.Exec(ctx, insertAuditLog,
+		arg.UserID,
+		arg.ProjectID,
+		arg.Action,
+		arg.Description,
+		arg.IpAddress,
+		arg.MetaData,
+	)
+	return err
 }

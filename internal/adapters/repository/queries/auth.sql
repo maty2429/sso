@@ -21,10 +21,19 @@ RETURNING *;
 
 -- name: CreateRefreshToken :one
 INSERT INTO refresh_tokens (
-    user_id, token_hash, device_info, ip_address, expires_at
+    id, user_id, token_hash, device_info, ip_address, expires_at
 ) VALUES (
-    $1, $2, $3, $4, $5
+    $1, $2, $3, $4, $5, $6
 ) RETURNING *;
+
+-- name: GetRefreshTokenByID :one
+SELECT * FROM refresh_tokens
+WHERE id = $1 LIMIT 1;
+
+-- name: RevokeRefreshToken :exec
+UPDATE refresh_tokens
+SET is_revoked = TRUE
+WHERE id = $1;
 
 -- name: CreateProjectMember :one
 INSERT INTO project_members (
@@ -53,6 +62,10 @@ WHERE pm.user_id = $1
   AND p.project_code = $2 
   AND pm.is_active = TRUE
 LIMIT 1;
+
+-- name: InsertAuditLog :exec
+INSERT INTO audit_logs (user_id, project_id, action, description, ip_address, meta_data)
+VALUES ($1, $2, $3, $4, $5, $6);
 
 -- name: CreateProject :one
 INSERT INTO projects (

@@ -15,10 +15,13 @@ type Querier interface {
 	CreateProjectMember(ctx context.Context, arg CreateProjectMemberParams) (ProjectMember, error)
 	CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) (RefreshToken, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	GetRefreshTokenByID(ctx context.Context, id pgtype.UUID) (RefreshToken, error)
 	GetMemberRoles(ctx context.Context, memberID pgtype.UUID) ([]GetMemberRolesRow, error)
 	GetProjectMemberByUserAndProject(ctx context.Context, arg GetProjectMemberByUserAndProjectParams) (ProjectMember, error)
+	InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) error
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByRut(ctx context.Context, rut int32) (User, error)
+	RevokeRefreshToken(ctx context.Context, id pgtype.UUID) error
 	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) (User, error)
 }
 

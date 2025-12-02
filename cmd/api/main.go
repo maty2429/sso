@@ -32,8 +32,8 @@ func main() {
 	// CAPA DE LÓGICA: Servicio
 	// Inyectamos el repo tres veces porque cumple las tres interfaces (User, Token, Project)
 	// Nota: Necesitamos actualizar NewAuthService para aceptar ProjectRepository
-	authService := service.NewAuthService(repo, repo, repo, cfg.JWTSecret)
-	projectService := service.NewProjectService(repo, repo)
+	authService := service.NewAuthService(repo, repo, repo, repo, cfg.JWTSecret)
+	projectService := service.NewProjectService(repo, repo, repo)
 
 	// CAPA DE TRANSPORTE: Handler
 	authHandler := handler.NewAuthHandler(authService)

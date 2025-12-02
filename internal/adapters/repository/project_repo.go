@@ -155,6 +155,39 @@ func (r *PostgresRepo) AssignRole(ctx context.Context, memberID uuid.UUID, roleC
 	return err
 }
 
+func (r *PostgresRepo) AddMemberWithRoles(ctx context.Context, userID uuid.UUID, projectID int32, roles []int) error {
+	tx, err := r.DB.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	qtx := dbrepo.New(tx)
+
+	member, err := qtx.CreateProjectMember(ctx, dbrepo.CreateProjectMemberParams{
+		UserID:    pgtype.UUID{Bytes: userID, Valid: true},
+		ProjectID: projectID,
+		IsActive:  pgtype.Bool{Bool: true, Valid: true},
+	})
+	if err != nil {
+		_ = tx.Rollback(ctx)
+		return err
+	}
+
+	for _, role := range roles {
+		if err := qtx.AssignRoleToMember(ctx, dbrepo.AssignRoleToMemberParams{
+			MemberID: member.ID,
+			RoleCode: int16(role),
+		}); err != nil {
+			_ = tx.Rollback(ctx)
+			return err
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (r *PostgresRepo) GetUserProjectsWithRoles(ctx context.Context, userID uuid.UUID) ([]domain.UserProject, error) {
 	// Query to get projects and roles for a user
 	// We need to join projects, project_members, project_member_roles, and role_definitions

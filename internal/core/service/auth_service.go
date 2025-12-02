@@ -9,6 +9,8 @@ import (
 	"sso/internal/core/ports"
 	"sso/internal/utils"
 
+	"crypto/sha256"
+	"encoding/hex"
 	"strconv"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -20,14 +22,16 @@ type AuthService struct {
 	userRepo    ports.UserRepository
 	tokenRepo   ports.TokenRepository
 	projectRepo ports.ProjectRepository
+	auditRepo   ports.AuditRepository
 	jwtSecret   []byte
 }
 
-func NewAuthService(userRepo ports.UserRepository, tokenRepo ports.TokenRepository, projectRepo ports.ProjectRepository, jwtSecret string) *AuthService {
+func NewAuthService(userRepo ports.UserRepository, tokenRepo ports.TokenRepository, projectRepo ports.ProjectRepository, auditRepo ports.AuditRepository, jwtSecret string) *AuthService {
 	return &AuthService{
 		userRepo:    userRepo,
 		tokenRepo:   tokenRepo,
 		projectRepo: projectRepo,
+		auditRepo:   auditRepo,
 		jwtSecret:   []byte(jwtSecret),
 	}
 }
@@ -74,12 +78,14 @@ func (s *AuthService) Login(ctx context.Context, rut, password, projectCode stri
 	}
 
 	// 6. Generar Refresh Token (Opaco)
-	refreshTokenStr := uuid.New().String()
-	refreshTokenHash, _ := bcrypt.GenerateFromPassword([]byte(refreshTokenStr), bcrypt.DefaultCost)
+	refreshTokenID := uuid.New()
+	refreshTokenStr := refreshTokenID.String()
+	refreshTokenHash := hashRefreshToken(refreshTokenStr)
 
 	refreshToken := &domain.RefreshToken{
+		ID:        refreshTokenID,
 		UserID:    user.ID,
-		TokenHash: string(refreshTokenHash),
+		TokenHash: refreshTokenHash,
 		ExpiresAt: time.Now().Add(24 * 7 * time.Hour), // 7 días
 	}
 
@@ -87,6 +93,12 @@ func (s *AuthService) Login(ctx context.Context, rut, password, projectCode stri
 	if err := s.tokenRepo.SaveRefreshToken(ctx, refreshToken); err != nil {
 		return "", "", nil, nil, err
 	}
+
+	s.logAuditAsync(domain.AuditLog{
+		UserID:      &user.ID,
+		Action:      "LOGIN_SUCCESS",
+		Description: "Login exitoso",
+	})
 
 	return accessToken, refreshTokenStr, user, roles, nil
 }
@@ -138,7 +150,17 @@ func (s *AuthService) ChangePassword(ctx context.Context, rut int, oldPassword, 
 	}
 
 	// 4. Actualizar usuario
-	return s.userRepo.UpdatePassword(ctx, user.ID, string(hashedPassword), false)
+	if err := s.userRepo.UpdatePassword(ctx, user.ID, string(hashedPassword), false); err != nil {
+		return err
+	}
+
+	s.logAuditAsync(domain.AuditLog{
+		UserID:      &user.ID,
+		Action:      "PASSWORD_CHANGED",
+		Description: "Contraseña cambiada",
+	})
+
+	return nil
 }
 
 func (s *AuthService) ValidateToken(tokenString string) (*domain.User, []int, error) {
@@ -212,4 +234,87 @@ func (s *AuthService) GetUserWithProjects(ctx context.Context, rut int) (*domain
 		User:     user,
 		Projects: projects,
 	}, nil
+}
+
+func (s *AuthService) Refresh(ctx context.Context, refreshToken string, projectCode string) (string, string, error) {
+	tokenID, err := uuid.Parse(refreshToken)
+	if err != nil {
+		return "", "", errors.New("invalid refresh token")
+	}
+
+	stored, err := s.tokenRepo.GetRefreshToken(ctx, tokenID)
+	if err != nil {
+		return "", "", errors.New("invalid refresh token")
+	}
+
+	if stored.IsRevoked || time.Now().After(stored.ExpiresAt) {
+		return "", "", errors.New("refresh token expired or revoked")
+	}
+
+	if stored.TokenHash != hashRefreshToken(refreshToken) {
+		return "", "", errors.New("invalid refresh token")
+	}
+
+	user, err := s.userRepo.FindByID(ctx, stored.UserID)
+	if err != nil || user == nil {
+		return "", "", errors.New("user not found")
+	}
+
+	roles, err := s.projectRepo.GetMemberRoles(ctx, user.ID.String(), projectCode)
+	if err != nil {
+		return "", "", errors.New("no access to this project")
+	}
+
+	accessToken, err := s.generateAccessToken(user, roles)
+	if err != nil {
+		return "", "", err
+	}
+
+	// Rotate refresh token
+	newRefreshID := uuid.New()
+	newRefreshStr := newRefreshID.String()
+	newHash := hashRefreshToken(newRefreshStr)
+
+	if err := s.tokenRepo.SaveRefreshToken(ctx, &domain.RefreshToken{
+		ID:        newRefreshID,
+		UserID:    user.ID,
+		TokenHash: newHash,
+		ExpiresAt: time.Now().Add(24 * 7 * time.Hour),
+	}); err != nil {
+		return "", "", err
+	}
+
+	// Revoke old token (best effort)
+	_ = s.tokenRepo.RevokeRefreshToken(ctx, tokenID)
+
+	return accessToken, newRefreshStr, nil
+}
+
+func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
+	tokenID, err := uuid.Parse(refreshToken)
+	if err != nil {
+		return errors.New("invalid refresh token")
+	}
+
+	stored, err := s.tokenRepo.GetRefreshToken(ctx, tokenID)
+	if err != nil {
+		return errors.New("invalid refresh token")
+	}
+	if stored.TokenHash != hashRefreshToken(refreshToken) {
+		return errors.New("invalid refresh token")
+	}
+
+	return s.tokenRepo.RevokeRefreshToken(ctx, tokenID)
+}
+
+func hashRefreshToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+func (s *AuthService) logAuditAsync(entry domain.AuditLog) {
+	if s.auditRepo == nil {
+		return
+	}
+	go s.auditRepo.InsertAuditLog(context.Background(), &entry)
 }

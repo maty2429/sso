@@ -34,4 +34,5 @@ type RefreshToken struct {
 	IPAddress  string
 	ExpiresAt  time.Time
 	CreatedAt  time.Time
+	IsRevoked  bool
 }
