@@ -6,7 +6,7 @@ import (
 )
 
 // NewRouter define todas las rutas y retorna el motor de Gin listo para usar
-func NewRouter(authHandler *AuthHandler, projectHandler *ProjectHandler) *gin.Engine {
+func NewRouter(authHandler *AuthHandler, projectHandler *ProjectHandler, authMiddleware *AuthMiddleware) *gin.Engine {
 	r := gin.Default()
 
 	// Configuración CORS abierta para desarrollo
@@ -23,10 +23,13 @@ func NewRouter(authHandler *AuthHandler, projectHandler *ProjectHandler) *gin.En
 		{
 			auth.POST("/login", authHandler.Login)
 			auth.POST("/register", authHandler.Register)
-			auth.POST("/change-password", authHandler.ChangePassword)
-			auth.GET("/users/:rut", authHandler.GetUser)
 			auth.POST("/refresh", authHandler.Refresh)
-			auth.POST("/logout", authHandler.Logout)
+
+			// Rutas protegidas
+			auth.GET("/me", authMiddleware.RequireRole(0), authHandler.Me)
+			auth.POST("/change-password", authMiddleware.RequireRole(0), authHandler.ChangePassword)
+			auth.GET("/users/:rut", authMiddleware.RequireRole(0), authHandler.GetUser)
+			auth.POST("/logout", authMiddleware.RequireRole(0), authHandler.Logout)
 		}
 
 		projects := v1.Group("/projects")

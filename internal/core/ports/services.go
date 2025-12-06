@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"sso/internal/core/domain"
+
+	"github.com/google/uuid"
 )
 
 type AuthService interface {
@@ -14,4 +16,5 @@ type AuthService interface {
 	GetUserWithProjects(ctx context.Context, rut int) (*domain.UserWithProjects, error)
 	Refresh(ctx context.Context, refreshToken string, projectCode string) (string, string, error)
 	Logout(ctx context.Context, refreshToken string) error
+	GetUserByID(ctx context.Context, id uuid.UUID) (*domain.User, error)
 }

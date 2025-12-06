@@ -34,13 +34,14 @@ func main() {
 	// Nota: Necesitamos actualizar NewAuthService para aceptar ProjectRepository
 	authService := service.NewAuthService(repo, repo, repo, repo, cfg.JWTSecret)
 	projectService := service.NewProjectService(repo, repo, repo)
+	authMiddleware := handler.NewAuthMiddleware(authService)
 
 	// CAPA DE TRANSPORTE: Handler
 	authHandler := handler.NewAuthHandler(authService)
 	projectHandler := handler.NewProjectHandler(projectService)
 
 	// 4. Inicializar Router (Aquí es donde limpiamos el main)
-	r := handler.NewRouter(authHandler, projectHandler)
+	r := handler.NewRouter(authHandler, projectHandler, authMiddleware)
 
 	// 5. Correr Servidor
 	log.Printf("🚀 Server starting on port %s", cfg.Port)

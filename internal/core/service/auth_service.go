@@ -321,6 +321,17 @@ func hashRefreshToken(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+func (s *AuthService) GetUserByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
+	user, err := s.userRepo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, errors.New("user not found")
+	}
+	return user, nil
+}
+
 func (s *AuthService) logAuditAsync(entry domain.AuditLog) {
 	if s.auditRepo == nil {
 		return
