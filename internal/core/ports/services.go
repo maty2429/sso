@@ -7,7 +7,7 @@ import (
 )
 
 type AuthService interface {
-	Login(ctx context.Context, rut, password, projectCode string) (string, string, *domain.User, []int, error)
+	Login(ctx context.Context, rut, password, projectCode string) (string, string, *domain.User, []int, string, error)
 	Register(ctx context.Context, user *domain.User) (*domain.User, error)
 	ChangePassword(ctx context.Context, rut int, oldPassword, newPassword string) error
 	ValidateToken(tokenString string) (*domain.User, []int, error)

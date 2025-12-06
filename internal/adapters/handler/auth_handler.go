@@ -32,7 +32,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	accessToken, refreshToken, user, roles, err := h.authService.Login(c.Request.Context(), req.Rut, req.Password, req.ProjectCode)
+	accessToken, refreshToken, user, roles, frontendURL, err := h.authService.Login(c.Request.Context(), req.Rut, req.Password, req.ProjectCode)
 	if err != nil {
 		if err.Error() == "PASSWORD_CHANGE_REQUIRED" {
 			c.JSON(http.StatusForbidden, gin.H{"error": "PASSWORD_CHANGE_REQUIRED", "message": "You must change your password"})
@@ -47,6 +47,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		"refresh_token": refreshToken,
 		"user":          user,
 		"roles":         roles,
+		"frontend_url":  frontendURL,
 	})
 }
 

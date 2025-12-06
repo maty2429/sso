@@ -36,45 +36,54 @@ func NewAuthService(userRepo ports.UserRepository, tokenRepo ports.TokenReposito
 	}
 }
 
-func (s *AuthService) Login(ctx context.Context, rut, password, projectCode string) (string, string, *domain.User, []int, error) {
+func (s *AuthService) Login(ctx context.Context, rut, password, projectCode string) (string, string, *domain.User, []int, string, error) {
 	// 1. Parsear RUT
 	rutInt, _, err := utils.ParseRut(rut)
 	if err != nil {
-		return "", "", nil, nil, errors.New("invalid rut format")
+		return "", "", nil, nil, "", errors.New("invalid rut format")
 	}
 
 	// 2. Buscar usuario
 	user, err := s.userRepo.FindByRut(ctx, rutInt)
 	if err != nil {
-		return "", "", nil, nil, err
+		return "", "", nil, nil, "", err
 	}
 	if user == nil {
-		return "", "", nil, nil, errors.New("invalid credentials")
+		return "", "", nil, nil, "", errors.New("invalid credentials")
 	}
 
 	// 2. Verificar contraseña
 	if user.PasswordHash == nil {
-		return "", "", nil, nil, errors.New("invalid credentials")
+		return "", "", nil, nil, "", errors.New("invalid credentials")
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(*user.PasswordHash), []byte(password)); err != nil {
-		return "", "", nil, nil, errors.New("invalid credentials")
+		return "", "", nil, nil, "", errors.New("invalid credentials")
 	}
 
 	// 3. Verificar si debe cambiar contraseña
 	if user.MustChangePassword {
-		return "", "", nil, nil, errors.New("PASSWORD_CHANGE_REQUIRED")
+		return "", "", nil, nil, "", errors.New("PASSWORD_CHANGE_REQUIRED")
+	}
+
+	// 3.1 Obtener proyecto para incluir su frontend_url
+	project, err := s.projectRepo.GetProjectByCode(ctx, projectCode)
+	if err != nil {
+		return "", "", nil, nil, "", err
+	}
+	if project == nil {
+		return "", "", nil, nil, "", errors.New("project not found")
 	}
 
 	// 4. Verificar membresía en el proyecto y obtener roles
 	roles, err := s.projectRepo.GetMemberRoles(ctx, user.ID.String(), projectCode)
 	if err != nil {
-		return "", "", nil, nil, errors.New("no access to this project")
+		return "", "", nil, nil, "", errors.New("no access to this project")
 	}
 
 	// 5. Generar Access Token (JWT) con Roles
 	accessToken, err := s.generateAccessToken(user, roles)
 	if err != nil {
-		return "", "", nil, nil, err
+		return "", "", nil, nil, "", err
 	}
 
 	// 6. Generar Refresh Token (Opaco)
@@ -91,7 +100,7 @@ func (s *AuthService) Login(ctx context.Context, rut, password, projectCode stri
 
 	// 7. Guardar Refresh Token
 	if err := s.tokenRepo.SaveRefreshToken(ctx, refreshToken); err != nil {
-		return "", "", nil, nil, err
+		return "", "", nil, nil, "", err
 	}
 
 	s.logAuditAsync(domain.AuditLog{
@@ -100,7 +109,7 @@ func (s *AuthService) Login(ctx context.Context, rut, password, projectCode stri
 		Description: "Login exitoso",
 	})
 
-	return accessToken, refreshTokenStr, user, roles, nil
+	return accessToken, refreshTokenStr, user, roles, project.FrontendURL, nil
 }
 
 func (s *AuthService) Register(ctx context.Context, user *domain.User) (*domain.User, error) {

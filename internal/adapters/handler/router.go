@@ -9,8 +9,12 @@ import (
 func NewRouter(authHandler *AuthHandler, projectHandler *ProjectHandler) *gin.Engine {
 	r := gin.Default()
 
-	// Configuración CORS (Vital para que el Frontend no falle)
-	r.Use(cors.Default())
+	// Configuración CORS abierta para desarrollo
+	r.Use(cors.New(cors.Config{
+		AllowAllOrigins: true,
+		AllowMethods:    []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:    []string{"*"},
+	}))
 
 	// Grupo de rutas para la API v1 (Buenas prácticas de versionado)
 	v1 := r.Group("/api/v1")

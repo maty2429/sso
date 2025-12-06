@@ -18,12 +18,15 @@ func (r *PostgresRepo) GetMemberRoles(ctx context.Context, userID string, projec
 		return nil, err
 	}
 
-	// 1. Get Member
-	memberParams := dbrepo.GetProjectMemberByUserAndProjectParams{
-		UserID:      pgtype.UUID{Bytes: uid, Valid: true},
-		ProjectCode: projectCode,
-	}
-	member, err := r.Q.GetProjectMemberByUserAndProject(ctx, memberParams)
+	// 1. Get member ID for the user in the project
+	var memberID pgtype.UUID
+	err = r.DB.QueryRow(ctx, `
+		SELECT pm.id
+		FROM project_members pm
+		JOIN projects p ON p.id = pm.project_id
+		WHERE pm.user_id = $1 AND p.project_code = $2 AND pm.is_active = true
+		LIMIT 1
+	`, uid, projectCode).Scan(&memberID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errors.New("member not found in project")
@@ -32,7 +35,7 @@ func (r *PostgresRepo) GetMemberRoles(ctx context.Context, userID string, projec
 	}
 
 	// 2. Get Roles
-	rolesRows, err := r.Q.GetMemberRoles(ctx, member.ID)
+	rolesRows, err := r.Q.GetMemberRoles(ctx, memberID)
 	if err != nil {
 		return nil, err
 	}

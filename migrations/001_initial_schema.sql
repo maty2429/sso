@@ -20,7 +20,7 @@ CREATE OR REPLACE FUNCTION trigger_set_timestamp()
 RETURNS TRIGGER AS $$
 BEGIN
   NEW.updated_at = NOW();
-  RETURN NEW;
+RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -28,12 +28,12 @@ $$ LANGUAGE plpgsql;
 -- 2. TABLA USUARIOS (Permite creación sin password)
 -- ==================================================================
 CREATE TABLE users (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    
+                       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+
     -- RUT único para Login
-    rut integer NOT NULL,        
-    dv char(1) NOT NULL,         
-    full_rut varchar(15) GENERATED ALWAYS AS (rut::text || '-' || dv) STORED,
+                       rut integer NOT NULL,
+                       dv char(1) NOT NULL,
+                       full_rut varchar(15) GENERATED ALWAYS AS (rut::text || '-' || dv) STORED,
 
     first_name varchar(100) NOT NULL,
     last_name varchar(100) NOT NULL,
@@ -60,8 +60,8 @@ CREATE TABLE users (
 );
 
 CREATE TRIGGER set_timestamp_users
-BEFORE UPDATE ON users
-FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
+    BEFORE UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
 
 CREATE INDEX idx_users_full_rut ON users(full_rut);
 
@@ -69,17 +69,17 @@ CREATE INDEX idx_users_full_rut ON users(full_rut);
 -- 3. PROYECTOS (Con URL para redirección)
 -- ==================================================================
 CREATE TABLE projects (
-    id int GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    project_code varchar(50) UNIQUE NOT NULL, -- Ej: 'PRJ-CONSTRUCCION'
-    name varchar(100) NOT NULL,
-    
+                          id int GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                          project_code varchar(50) UNIQUE NOT NULL, -- Ej: 'PRJ-CONSTRUCCION'
+                          name varchar(100) NOT NULL,
+
     -- NUEVO: La URL a donde el SSO debe redirigir tras el login exitoso
-    frontend_url varchar(255),  -- Ej: 'https://app.construccion.cl'
-    
-    description text,
-    is_active boolean DEFAULT TRUE, 
-    created_at timestamp DEFAULT NOW(),
-    updated_at timestamp DEFAULT NOW()
+                          frontend_url varchar(255),  -- Ej: 'https://app.construccion.cl'
+
+                          description text,
+                          is_active boolean DEFAULT TRUE,
+                          created_at timestamp DEFAULT NOW(),
+                          updated_at timestamp DEFAULT NOW()
 );
 
 CREATE INDEX idx_projects_code ON projects(project_code);
@@ -88,32 +88,32 @@ CREATE INDEX idx_projects_code ON projects(project_code);
 -- 4. DICCIONARIO DE ROLES (Numéricos)
 -- ==================================================================
 CREATE TABLE role_definitions (
-    code smallint PRIMARY KEY, -- El número (ID real del rol)
-    name varchar(50) NOT NULL, -- El nombre humano ('Admin', 'Visita')
-    description text
+                                  code smallint PRIMARY KEY, -- El número (ID real del rol)
+                                  name varchar(50) NOT NULL, -- El nombre humano ('Admin', 'Visita')
+                                  description text
 );
 
 -- Insertamos roles estándar
-INSERT INTO role_definitions (code, name, description) VALUES 
-(10, 'Visualizador', 'Solo lectura'),
-(20, 'Digitador', 'Ingreso de datos básicos'),
-(50, 'Supervisor', 'Aprobación y gestión de equipo'),
-(99, 'Admin', 'Configuración total del proyecto');
+INSERT INTO role_definitions (code, name, description) VALUES
+                                                           (10, 'Visualizador', 'Solo lectura'),
+                                                           (20, 'Digitador', 'Ingreso de datos básicos'),
+                                                           (50, 'Supervisor', 'Aprobación y gestión de equipo'),
+                                                           (99, 'Admin', 'Configuración total del proyecto');
 
 -- ==================================================================
 -- 5. MIEMBROS (Quién está en qué proyecto)
 -- ==================================================================
 CREATE TABLE project_members (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    project_id int NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    
-    is_active boolean DEFAULT TRUE, 
-    joined_at timestamp DEFAULT NOW(),
+                                 id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                                 user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                                 project_id int NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+
+                                 is_active boolean DEFAULT TRUE,
+                                 joined_at timestamp DEFAULT NOW(),
 
     -- Evita duplicados: Juan solo puede ser "miembro" de un proyecto una vez.
     -- Sus múltiples roles se definen en la tabla siguiente.
-    CONSTRAINT uq_member_project UNIQUE (user_id, project_id)
+                                 CONSTRAINT uq_member_project UNIQUE (user_id, project_id)
 );
 
 CREATE INDEX idx_members_user ON project_members(user_id);
@@ -124,34 +124,34 @@ CREATE INDEX idx_members_project ON project_members(project_id);
 -- ==================================================================
 -- Esta tabla permite que Juan tenga rol 10 y rol 50 en el mismo proyecto
 CREATE TABLE project_member_roles (
-    member_id uuid NOT NULL REFERENCES project_members(id) ON DELETE CASCADE,
-    role_code smallint NOT NULL REFERENCES role_definitions(code) ON DELETE CASCADE,
-    assigned_at timestamp DEFAULT NOW(),
-    
-    PRIMARY KEY (member_id, role_code)
+                                      member_id uuid NOT NULL REFERENCES project_members(id) ON DELETE CASCADE,
+                                      role_code smallint NOT NULL REFERENCES role_definitions(code) ON DELETE CASCADE,
+                                      assigned_at timestamp DEFAULT NOW(),
+
+                                      PRIMARY KEY (member_id, role_code)
 );
 
 -- ==================================================================
 -- 7. TABLAS DE SOPORTE (Tokens y Logs)
 -- ==================================================================
 CREATE TABLE refresh_tokens (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    token_hash text NOT NULL,       
-    device_info varchar(255),       
-    ip_address inet,
-    is_revoked boolean DEFAULT FALSE, 
-    expires_at timestamp NOT NULL,    
-    created_at timestamp DEFAULT NOW()
+                                id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                                user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                                token_hash text NOT NULL,
+                                device_info varchar(255),
+                                ip_address inet,
+                                is_revoked boolean DEFAULT FALSE,
+                                expires_at timestamp NOT NULL,
+                                created_at timestamp DEFAULT NOW()
 );
 
 CREATE TABLE audit_logs (
-    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    user_id uuid REFERENCES users(id) ON DELETE SET NULL,
-    project_id int REFERENCES projects(id) ON DELETE SET NULL,
-    action varchar(50) NOT NULL,  
-    description text,
-    ip_address inet,
-    meta_data jsonb,              
-    created_at timestamp DEFAULT NOW()
+                            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                            user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+                            project_id int REFERENCES projects(id) ON DELETE SET NULL,
+                            action varchar(50) NOT NULL,
+                            description text,
+                            ip_address inet,
+                            meta_data jsonb,
+                            created_at timestamp DEFAULT NOW()
 );
