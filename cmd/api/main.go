@@ -47,12 +47,17 @@ func main() {
 	projectHandler := handler.NewProjectHandler(projectService)
 
 	// 4. Inicializar Router (Aquí es donde limpiamos el main)
-	r := handler.NewRouter(authHandler, projectHandler, authMiddleware)
+	r := handler.NewRouter(authHandler, projectHandler, authMiddleware, cfg.AppEnv)
 
 	// 5. Configuración del Servidor HTTP con apagado elegante
 	srv := &http.Server{
-		Addr:    cfg.Port,
-		Handler: r,
+		Addr:              cfg.Port,
+		Handler:           r,
+		ReadHeaderTimeout: 2 * time.Second,
+		ReadTimeout:       5 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 
 	go func() {

@@ -8,8 +8,20 @@ import (
 )
 
 // NewRouter define todas las rutas y retorna el motor de Gin listo para usar
-func NewRouter(authHandler *AuthHandler, projectHandler *ProjectHandler, authMiddleware *AuthMiddleware) *gin.Engine {
-	r := gin.Default()
+func NewRouter(authHandler *AuthHandler, projectHandler *ProjectHandler, authMiddleware *AuthMiddleware, appEnv string) *gin.Engine {
+	if appEnv == "production" {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
+	r := gin.New()
+
+	// Siempre capturar panics
+	r.Use(gin.Recovery())
+
+	// Logger solo en entornos no productivos
+	if appEnv != "production" {
+		r.Use(gin.Logger())
+	}
 
 	// Rate limiting simple por IP
 	r.Use(RateLimitMiddleware())

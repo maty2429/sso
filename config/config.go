@@ -10,6 +10,7 @@ type Config struct {
 	DBSource  string
 	Port      string
 	JWTSecret string
+	AppEnv    string
 }
 
 func Load() (*Config, error) {
@@ -23,10 +24,15 @@ func Load() (*Config, error) {
 		DBSource:  os.Getenv("DB_URL"),
 		Port:      os.Getenv("PORT"),
 		JWTSecret: os.Getenv("JWT_SECRET"),
+		AppEnv:    os.Getenv("APP_ENV"),
 	}
 
 	if cfg.Port == "" {
 		cfg.Port = ":8080"
+	}
+
+	if cfg.AppEnv == "" {
+		cfg.AppEnv = "development"
 	}
 
 	return cfg, nil
