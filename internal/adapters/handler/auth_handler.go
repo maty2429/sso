@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"sso/internal/core/domain"
 	"sso/internal/core/ports"
+	"sso/internal/core/service"
 	"sso/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -35,7 +37,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	accessToken, refreshToken, user, roles, frontendURL, err := h.authService.Login(c.Request.Context(), req.Rut, req.Password, req.ProjectCode)
 	if err != nil {
-		if err.Error() == "PASSWORD_CHANGE_REQUIRED" {
+		if errors.Is(err, service.ErrPasswordChangeRequired) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "PASSWORD_CHANGE_REQUIRED", "message": "You must change your password"})
 			return
 		}
@@ -101,6 +103,10 @@ func (h *AuthHandler) Register(c *gin.Context) {
 
 	createdUser, err := h.authService.Register(c.Request.Context(), user)
 	if err != nil {
+		if errors.Is(err, service.ErrUserAlreadyExists) {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

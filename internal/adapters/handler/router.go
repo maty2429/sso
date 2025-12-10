@@ -53,10 +53,10 @@ func NewRouter(authHandler *AuthHandler, projectHandler *ProjectHandler, authMid
 			auth.POST("/login", authHandler.Login)
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/refresh", authHandler.Refresh)
+			auth.POST("/change-password", authHandler.ChangePassword)
 
 			// Rutas protegidas
 			auth.GET("/me", authMiddleware.RequireRole(0), authHandler.Me)
-			auth.POST("/change-password", authMiddleware.RequireRole(0), authHandler.ChangePassword)
 			auth.GET("/users/:rut", authMiddleware.RequireRole(0), authHandler.GetUser)
 			auth.POST("/logout", authMiddleware.RequireRole(0), authHandler.Logout)
 		}

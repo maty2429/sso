@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"sso/internal/core/domain"
@@ -26,6 +27,12 @@ type AuthService struct {
 	jwtSecret   []byte
 }
 
+var (
+	ErrInvalidCredentials     = errors.New("invalid credentials")
+	ErrPasswordChangeRequired = errors.New("PASSWORD_CHANGE_REQUIRED")
+	ErrUserAlreadyExists      = errors.New("user with given rut and dv already exists")
+)
+
 func NewAuthService(userRepo ports.UserRepository, tokenRepo ports.TokenRepository, projectRepo ports.ProjectRepository, auditRepo ports.AuditRepository, jwtSecret string) *AuthService {
 	return &AuthService{
 		userRepo:    userRepo,
@@ -38,7 +45,7 @@ func NewAuthService(userRepo ports.UserRepository, tokenRepo ports.TokenReposito
 
 func (s *AuthService) Login(ctx context.Context, rut, password, projectCode string) (string, string, *domain.User, []int, string, error) {
 	// 1. Parsear RUT
-	rutInt, _, err := utils.ParseRut(rut)
+	rutInt, dv, err := utils.ParseRut(rut)
 	if err != nil {
 		return "", "", nil, nil, "", errors.New("invalid rut format")
 	}
@@ -49,20 +56,25 @@ func (s *AuthService) Login(ctx context.Context, rut, password, projectCode stri
 		return "", "", nil, nil, "", err
 	}
 	if user == nil {
-		return "", "", nil, nil, "", errors.New("invalid credentials")
+		return "", "", nil, nil, "", ErrInvalidCredentials
+	}
+
+	// 2.1 Validar DV ingresado
+	if !strings.EqualFold(user.Dv, dv) {
+		return "", "", nil, nil, "", ErrInvalidCredentials
 	}
 
 	// 2. Verificar contraseña
 	if user.PasswordHash == nil {
-		return "", "", nil, nil, "", errors.New("invalid credentials")
+		return "", "", nil, nil, "", ErrInvalidCredentials
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(*user.PasswordHash), []byte(password)); err != nil {
-		return "", "", nil, nil, "", errors.New("invalid credentials")
+		return "", "", nil, nil, "", ErrInvalidCredentials
 	}
 
 	// 3. Verificar si debe cambiar contraseña
 	if user.MustChangePassword {
-		return "", "", nil, nil, "", errors.New("PASSWORD_CHANGE_REQUIRED")
+		return "", "", nil, nil, "", ErrPasswordChangeRequired
 	}
 
 	// 3.1 Obtener proyecto para incluir su frontend_url
@@ -113,6 +125,15 @@ func (s *AuthService) Login(ctx context.Context, rut, password, projectCode stri
 }
 
 func (s *AuthService) Register(ctx context.Context, user *domain.User) (*domain.User, error) {
+	// 0. Validar si ya existe usuario con el mismo RUT/DV
+	existing, err := s.userRepo.FindByRut(ctx, user.Rut)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		return nil, ErrUserAlreadyExists
+	}
+
 	// 1. Generar password inicial (primeros 4 dígitos del RUT)
 	// Asumimos que user.Rut tiene el RUT numérico (ej: 12345678)
 	rutStr := strconv.Itoa(user.Rut)
