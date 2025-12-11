@@ -1,22 +1,32 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1.7-labs
 
-# Build stage (match required Go version)
+# Build stage (Go version as declared in go.mod)
 FROM golang:1.25.4-alpine AS builder
 WORKDIR /app
 
-# Tools for static build + compression (Dejamos UPX instalado por si lo requieres, pero no se usará en el RUN final)
-RUN apk add --no-cache ca-certificates git upx
+# Minimal tooling; avoid extra packages to keep build light on small VMs
+RUN apk add --no-cache ca-certificates
 
-# Cache go env and dependencies
+ENV CGO_ENABLED=0 GOOS=linux
+
+# Cache modules and build artifacts between builds to reduce CPU/RAM thrash
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go env -w GOMODCACHE=/go/pkg/mod
+
+# Resolve deps first for better layer reuse
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download
 
 # Copy source
 COPY . .
 
-# Build static binary con optimizaciones, SIN compresión UPX pesada
-# ESTA ES LA LÍNEA CORREGIDA
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -extldflags '-static'" -a -o /app/sso-api ./cmd/api
+# Build optimized static binary; drop debug info and VCS metadata
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go build -trimpath -buildvcs=false -ldflags="-s -w" -o /app/sso-api ./cmd/api
 
 # Runtime stage (scratch for minimal image)
 FROM scratch
