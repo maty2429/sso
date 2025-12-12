@@ -11,6 +11,8 @@ import (
 func NewRouter(authHandler *AuthHandler, projectHandler *ProjectHandler, authMiddleware *AuthMiddleware, appEnv string) *gin.Engine {
 	if appEnv == "production" {
 		gin.SetMode(gin.ReleaseMode)
+	} else {
+		gin.SetMode(gin.DebugMode)
 	}
 
 	r := gin.New()

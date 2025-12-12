@@ -2,8 +2,8 @@ SHELL := /bin/bash
 GOCACHE ?= $(CURDIR)/.gocache
 
 # Env files (override from CLI: ENVFILE_DEV=.env.local make run-dev)
-ENVFILE_DEV ?= .env
-ENVFILE_PROD ?= .env.prod
+ENVFILE_DEV ?= .env.dev
+ENVFILE_PROD ?= .env
 
 # Helper to load env vars from a file (ignores comments/blank lines and strips CRLF)
 define load_env

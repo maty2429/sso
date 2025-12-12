@@ -4,9 +4,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    env_file:
+      - .env.dev
     environment:
+      # Fallbacks if .env.dev is missing
       DB_URL: ${DB_URL:-postgres://postgres:password@db:5432/sso_db?sslmode=disable}
       PORT: ${PORT:-:8080}
       JWT_SECRET: ${JWT_SECRET:-supersecretkey}
+      APP_ENV: ${APP_ENV:-development}
     ports:
       - "8080:8080"

@@ -1,0 +1,24 @@
+version: "3.9"
+
+services:
+  # 1. Tu API de Go (Se compila usando el Dockerfile corregido)
+  api:
+    build: .
+    restart: always
+    env_file: .env # Carga las credenciales (incluyendo APP_ENV=production)
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+    expose:
+      - "8080" # Puerto interno solo para Caddy
+
+  # 2. Servidor Caddy (Reverse Proxy/HTTPS)
+  caddy:
+    image: caddy:latest
+    restart: always
+    ports:
+      - "80:80"   # HTTP
+      - "443:443" # HTTPS
+
+    # Caddy escucha en la IP pública (la que usas ahora) y redirige a la API
+    # ⚠️ NOTA: Si usas la IP estática (Paso 2), esta IP nunca cambiará.
+    command: caddy reverse-proxy --from http://136.118.120.241 --to api:8080

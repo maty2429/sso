@@ -14,17 +14,30 @@ type Config struct {
 }
 
 func Load() (*Config, error) {
-	// Cargar .env si existe (no obligatorio en producción si se usan vars de entorno reales)
-	if err := godotenv.Load(); err != nil {
-		// Loguear advertencia pero no fallar, ya que podrían estar usando variables de entorno del sistema
-		// log.Println("No .env file found")
+	appEnv := os.Getenv("APP_ENV")
+	if appEnv == "" {
+		appEnv = "development"
+	}
+
+	// Seleccionar archivo de entorno según APP_ENV
+	envFile := ".env.dev"
+	if appEnv == "production" {
+		envFile = ".env"
+	}
+
+	// Cargar env específico si está presente (ignorar error si no existe)
+	_ = godotenv.Load(envFile)
+
+	// Permitir que el archivo cargado sobreescriba APP_ENV
+	if envFromFile := os.Getenv("APP_ENV"); envFromFile != "" {
+		appEnv = envFromFile
 	}
 
 	cfg := &Config{
 		DBSource:  os.Getenv("DB_URL"),
 		Port:      os.Getenv("PORT"),
 		JWTSecret: os.Getenv("JWT_SECRET"),
-		AppEnv:    os.Getenv("APP_ENV"),
+		AppEnv:    appEnv,
 	}
 
 	if cfg.Port == "" {
